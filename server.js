@@ -9,17 +9,14 @@ export default class Server {
   #sslKey = null;
 
   addSsl(certPath, keyPath) {
-    Promise.all([Deno.readTextFile(certPath), Deno.readTextFile(keyPath)])
-      .then(values => {
-        this.#sslCert = values[0];
-        this.#sslKey = values[1];
-      })
-      .catch(value => {
-        Log.log("There was an error reading SSL details.");
-        if (value instanceof Error) {
-          Log.printError(value);
-        }
-      });
+    try {
+      this.#sslCert = Deno.readTextFileSync(certPath);
+      this.#sslKey = Deno.readTextFileSync(keyPath);
+    }
+    catch (error) {
+      Log.log("There was an error reading SSL details.");
+      Log.printError(error);
+    }
   }
 
   addStaticMountRoute(routePath, mountPoint) {
