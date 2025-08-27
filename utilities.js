@@ -2,7 +2,7 @@ export class Args {
   
   static has(name) {
     for (const arg of Deno.args) {
-      if (arg === name || arg.startsWith(name) + "=") {
+      if (arg === name || arg.startsWith(name + "=")) {
         return true;
       }
     }
