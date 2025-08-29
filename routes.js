@@ -35,7 +35,10 @@ export class StaticMountRoute {
   }
 
   async execute(request) {
-    const routedPath = this.#mountPoint + request.path.substring(this.#routePath.length);
+    let routedPath = this.#mountPoint + request.path.substring(this.#routePath.length);
+    if (routedPath.endsWith("/")) {
+      routedPath = routedPath.substring(0, routedPath.length - 1);
+    }
     return await serveStaticFile(routedPath);
   }
 

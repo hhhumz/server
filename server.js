@@ -27,7 +27,7 @@ export default class Server {
     this.#routes.push(new StaticFileRoute(routePath, filePath));
   }
 
-  addCustomRoute(routeObject) {
+  addRoute(routeObject) {
     if (isValidRouteObject(routeObject)) {
       throw new TypeError("Must provide a valid Route object or implementation");
     }
