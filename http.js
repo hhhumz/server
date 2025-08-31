@@ -60,6 +60,9 @@ export default class Http {
     else if (extension === "ttf" || extension === "otf") {
       contentType = "font/woff2";
     }
+    else if (extension === "svg") {
+      contentType = "image/svg+xml";
+    }
     return contentType;
   }
 
