@@ -7,6 +7,11 @@ export default class Server {
   #routes = [];
   #sslCert = null;
   #sslKey = null;
+  #abortController = new AbortController();
+
+  stop() {
+    this.#abortController.abort();
+  }
 
   addSsl(certPath, keyPath) {
     try {
@@ -59,6 +64,7 @@ export default class Server {
   serve(port) {
     const denoConfig = {
       port: port,
+      signal: this.#abortController.signal,
       onListen() {
         Log.log(`Starting server on port ${port}...`);
       }
@@ -67,7 +73,20 @@ export default class Server {
       denoConfig["cert"] = this.#sslCert;
       denoConfig["key"] = this.#sslKey;
     }
-    Deno.serve(denoConfig, async request => this.#handleRequest(request));
+    return Deno.serve(denoConfig, async request => await this.#handleRequest(request));
+  }
+
+  /** @experimental */
+  async serveAndWatch(port, watchDirs) {
+    const denoServer = this.serve(port);
+    Log.logJs("Watching paths:", watchDirs);
+    const fileWatcher = Deno.watchFs(watchDirs ?? "./");
+    for await (const event of fileWatcher) {
+      fileWatcher.close();
+      Log.logJs("Restarting server due to file changes", event.paths);
+      this.stop();
+    }
+    await denoServer.finished;
   }
 
 }

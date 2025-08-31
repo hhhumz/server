@@ -1,4 +1,4 @@
-import Http from "./http.js";
+import { serveStaticFile } from "./utilities.js";
 
 export class StaticFileRoute {
   
@@ -42,29 +42,4 @@ export class StaticMountRoute {
     return await serveStaticFile(routedPath);
   }
 
-}
-
-async function serveStaticFile(path) {
-  let body;
-  const contentType = Http.getMimeTypeFromFileName(path)
-  try {
-    if (contentType.startsWith("text/")) {
-      body = await Deno.readTextFile(Deno.cwd() + path);
-    }
-    else {
-      body = await Deno.readFile(Deno.cwd() + path);
-    }
-  }
-  catch (error) {
-    if (error instanceof Deno.errors.NotFound) {
-      throw Http.createHttpError("Not found", 404);
-    }
-    else {
-      throw error;
-    }
-  }
-  return new Response(body, {
-    status: 200,
-    headers: {"content-type": contentType},
-  });
 }

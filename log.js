@@ -1,7 +1,7 @@
 export default class Log {
   
   static log(message) {
-    console.log(new Date().toLocaleTimeString().padEnd(12) + message);
+    console.log(getDate() + message);
   }
 
   static printError(error) {
@@ -13,4 +13,13 @@ export default class Log {
     console.trace();
   }
 
+  static logJs(message, ...m) {
+    this.log(message);
+    console.log(...m);
+  }
+
+}
+
+function getDate() {
+  return new Date().toLocaleTimeString().padEnd(12);
 }

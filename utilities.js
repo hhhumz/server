@@ -1,3 +1,5 @@
+import Http from "./http.js";
+
 export class Args {
   
   static has(name) {
@@ -22,10 +24,35 @@ export class Args {
         }
       }
     }
-    catch (error) {
+    catch (_) {
       value = defaultValue;
     }
     return value;
   }
 
+}
+
+export async function serveStaticFile(path) {
+  let body;
+  const contentType = Http.getMimeTypeFromFileName(path)
+  try {
+    if (contentType.startsWith("text/")) {
+      body = await Deno.readTextFile(Deno.cwd() + path);
+    }
+    else {
+      body = await Deno.readFile(Deno.cwd() + path);
+    }
+  }
+  catch (error) {
+    if (error instanceof Deno.errors.NotFound) {
+      throw Http.createHttpError("Not found", 404);
+    }
+    else {
+      throw error;
+    }
+  }
+  return new Response(body, {
+    status: 200,
+    headers: {"content-type": contentType},
+  });
 }
