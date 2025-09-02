@@ -86,6 +86,10 @@ class WrappedRequest {
     this.#path = decodeURIComponent(new URL(request.url).pathname);
   }
 
+  async getJson() {
+    return await this.#request.json();
+  }
+
 }
 
 class HttpError extends Error {

@@ -33,7 +33,7 @@ export default class Server {
   }
 
   addRoute(routeObject) {
-    if (isValidRouteObject(routeObject)) {
+    if (!isValidRouteObject(routeObject)) {
       throw new TypeError("Must provide a valid Route object or implementation");
     }
     this.#routes.push(routeObject);
