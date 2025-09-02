@@ -1,5 +1,11 @@
 {
   "name": "@hhhumz/server",
   "version": "0.1.0",
-  "exports": "./api.js"
+  "exports": {
+    "./server": "./server/api.js",
+    "./jsdb": "./jsdb/api.js"
+  },
+  "imports": {
+    "std": "jsr:@std"
+  }
 }
