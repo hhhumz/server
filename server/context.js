@@ -56,13 +56,20 @@ export default class HttpContext {
   get json() {
     return this.#json;
   }
+
+  #isLocalhost = false;
+  get isLocalhost() {
+    return this.#isLocalhost;
+  }
   
   constructor(request) {
     if (!(request instanceof Request)) {
       throw new TypeError("Must provide a Request");
     }
     this.#request = request;
-    this.#requestPath = decodeURIComponent(new URL(request.url).pathname);
+    const url = new URL(request.url);
+    this.#requestPath = decodeURIComponent(url.pathname);
+    this.#isLocalhost = decodeURIComponent(url.hostname) === "localhost";
     this.#ip = request?.headers?.get("x-forwarded-for") || request?.conn?.remoteAddr?.hostname || UNKNOWN_IP;
   }
 
@@ -104,7 +111,7 @@ export default class HttpContext {
     }
     this.respond(new Response(JSON.stringify(body ?? {}), {
       status: statusCode,
-      headers: {"content-type": "application/json"},
+      headers: this.getHeaders({"content-type": "application/json"}),
     }));
   }
 
@@ -135,12 +142,24 @@ export default class HttpContext {
     }
     this.respond(new Response(body, {
       status: 200,
-      headers: {"content-type": contentType},
+      headers: this.getHeaders({"content-type": contentType}),
     }));
   }
 
   setError(error) {
     this.#error = error;
+  }
+
+  getHeaders(otherHeadersPlainObj) {
+    otherHeadersPlainObj["Referrer-Policy"] = "same-origin";
+    otherHeadersPlainObj["Strict-Transport-Security"] = "max-age=2000000; includeSubDomains"; 
+    otherHeadersPlainObj["X-Frame-Options"] = "DENY";
+    otherHeadersPlainObj["X-Content-Type-Options"] = "nosniff";
+    if (!this.#isLocalhost) {
+      otherHeadersPlainObj["Content-Security-Policy"] =
+      "frame-ancestors 'none'; default-src 'self'; img-src 'self'; script-src 'self'; style-src 'self'";
+    }
+    return otherHeadersPlainObj;
   }
 
 }

@@ -45,7 +45,7 @@ export default class Server {
       this.logSuppressable(`Server stopped.`);
     });
     this.addEventListener("requestReceived", event => {
-      console.log(event.context.request);
+      // TODO
       this.logSuppressable(`${event.context.requestPath} (${event.context.requestMethod}) from <ip here>`);
     });
     this.addEventListener("noRoutesMatched", event => {
