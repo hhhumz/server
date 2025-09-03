@@ -10,7 +10,7 @@ export default class Server {
   #sslKey = null;
   suppressDefaultLogging = false;
   #logger = null;
-  #defaultErrorHandler = null;
+  #mainLoopErrorHandler = null;
 
   #abortController = new AbortController();
   #eventTarget = new EventTarget();
@@ -20,7 +20,7 @@ export default class Server {
    * sslCertPath: string
    * sslKeyPath: string
    * suppressDefaultLogging: boolean
-   * defaultErrorHandler: Function
+   * mainLoopErrorHandler: Function
    * }} options 
    * 
    */
@@ -33,9 +33,9 @@ export default class Server {
     this.suppressDefaultLogging = !!options["suppressDefaultLogging"];
     this.#logger = isValidLoggerObject(options["logger"]) ? options["logger"] : new DefaultLogger();
 
-    this.#defaultErrorHandler = hasFunction(options, "defaultErrorHandler")
-      ? options.defaultErrorHandler :
-      (error, context) => this.defaultHandleError(error, context);
+    this.#mainLoopErrorHandler = hasFunction(options, "mainLoopErrorHandler")
+      ? options.mainLoopErrorHandler :
+      (error, context) => this.#lastResortErrorHandler(error, context);
 
     this.addEventListener("listen", event => {
       this.logSuppressable(`Starting server on port ${event.port}\u2026`);
@@ -49,7 +49,7 @@ export default class Server {
     });
     this.addEventListener("responseSent", event => {
       // TODO: stringify body. also track size
-      this.logSuppressable(`Response: ${event.context.response.status}`);
+      this.logSuppressable(`Response: ${event.context?.response?.status}`);
     });
   }
 
@@ -111,7 +111,7 @@ export default class Server {
               await route.handleError(context, error1);
             }
             else {
-              await this.defaultHandleError(error1, context);
+              await this.handleMainLoopError(error1, context);
             }
           }
           catch (error2) {
@@ -130,10 +130,10 @@ export default class Server {
     // Verify a response has been provided.
     if (!(context.response instanceof Response)) {
       if (context.error) {
-        this.defaultHandleError(context.error, context);
+        this.handleMainLoopError(context.error, context);
       }
       else {
-        this.defaultHandleError(new Error("No response was provided. Set one with HttpContext.respond()"), context);
+        this.handleMainLoopError(new Error("No response was provided. Set one with HttpContext.respond()"), context);
       }
     }
 
@@ -146,11 +146,12 @@ export default class Server {
   }
 
   async serve(port) {
+    const s = this;
     const denoConfig = {
       port: port,
       signal: this.#abortController.signal,
       onListen() {
-        this.dispatchEvent(new Events.ServerListenEvent(port));
+        s.dispatchEvent(new Events.ServerListenEvent(port));
       }
     };
     if (this.#sslCert !== null && this.#sslKey !== null) {
@@ -179,18 +180,18 @@ export default class Server {
     this.#abortController.abort();
   }
 
-  get addEventListener() {
-    return this.#eventTarget.addEventListener;
+  addEventListener(...a) {
+    this.#eventTarget.addEventListener(...a);
   }
 
-  get removeEventListener() {
-    return this.#eventTarget.removeEventListener;
+  removeEventListener(...a) {
+    this.#eventTarget.removeEventListener(...a);
   }
 
-  get dispatchEvent() {
+  dispatchEvent(...a) {
     // TODO: should this be a call to dispatchEvent wrapped in a safe
     // try/catch block that calls the default error handler?
-    return this.#eventTarget.dispatchEvent;
+    this.#eventTarget.dispatchEvent(...a);
   }
 
   log(...args) {
@@ -206,19 +207,24 @@ export default class Server {
    * @param {Error} error 
    * @param {HttpContext} context 
    */
-  async defaultHandleError(error, context) {
-    this.logSuppressable("Handling error", error); // TODO should be configurable
-    if (typeof(this.#defaultErrorHandler) === "function") {
-      await this.#defaultErrorHandler(context, error1);
+  async handleMainLoopError(error, context) {
+    this.logSuppressable("Handling error:", error); // TODO should be configurable
+    if (typeof(this.#mainLoopErrorHandler) === "function") {
+      await this.#mainLoopErrorHandler(error, context);
     }
     else {
-      // Last resort error handler
-      if (isValidHttpError(error)) {
-        context.respondJson({message: error.message}, error.statusCode);
-      }
-      else {
-        context.respondJson({message: "Internal Server Error"}, 500);
-      }
+      this.#lastResortErrorHandler(error, context);
+    }
+  }
+
+  #lastResortErrorHandler(error, context) {
+    if (isValidHttpError(error)) {
+      console.log("Some settings are heppening.(valid http error edition)");
+      context.respondJson({message: error.message}, error.statusCode);
+    }
+    else {
+      console.log("Some settings are heppening.", context, context instanceof HttpContext);
+      context.respondJson({message: "Internal Server Error"}, 500);
     }
   }
 
@@ -233,6 +239,10 @@ function isValidLoggerObject(object) {
 }
 
 function isValidHttpError(object) {
+  console.log("Tracing HTTP ERROR!");
+  console.log(object);
+  console.log(object.message);
+  console.log(object.statusCode);
   return typeof(object["message"]) === "string" && Number.isInteger(object["statusCode"]);
 }
 
@@ -261,9 +271,9 @@ export class HttpError extends Error {
 
   constructor(message, statusCode, error) {
     super(message ?? "Internal Server Error");
-    if (!Number.isInteger(statusCode) || Number.isNaN(statusCode) || statusCode < 100 || statusCode > 599) {
-      this.#statusCode = 500;
-    }
+    this.#statusCode = 
+      (!Number.isInteger(statusCode) || Number.isNaN(statusCode) || statusCode < 100 || statusCode > 599) 
+      ? 500 : statusCode;
     this.#error = error;
   }
 
