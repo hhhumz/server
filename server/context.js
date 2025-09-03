@@ -1,7 +1,5 @@
-import { Validator } from "../core/api.js";
+import { Validator, UNKNOWN_IP } from "../core/api.js";
 import { HttpError } from "./server.js";
-
-const UNKNOWN_IP = Symbol();
 
 // TODO maybe implement some sort of request change logging ?
 
@@ -44,7 +42,7 @@ export default class HttpContext {
 
   #ip;
   get ip() {
-    return this.#ip === UNKNOWN_IP ? null : this.#ip;
+    return this.#ip;
   }
 
   /** @type {any} Arbitrary data for this context. */

@@ -1,4 +1,4 @@
-import { DefaultLogger } from "./../core/api.js";
+import { DefaultLogger, UNKNOWN_IP } from "./../core/api.js";
 import HttpContext from "./context.js";
 import { StaticMountRoute, StaticFileRoute } from "./routes.js";
 import * as Events from "./event.js";
@@ -45,8 +45,9 @@ export default class Server {
       this.logSuppressable(`Server stopped.`);
     });
     this.addEventListener("requestReceived", event => {
-      // TODO
-      this.logSuppressable(`${event.context.requestPath} (${event.context.requestMethod}) from <ip here>`);
+      const ip = event.context.ip;
+      const displayIp = ip === UNKNOWN_IP ? "Unknown IP" : ip;
+      this.logSuppressable(`${event.context.requestPath} (${event.context.requestMethod}) from ${displayIp}`);
     });
     this.addEventListener("noRoutesMatched", event => {
       if (!(event.context.response instanceof Response)) {

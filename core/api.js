@@ -12,3 +12,5 @@ export function isPlainObject(object) {
     && (object.__proto__ === null || object.__proto__ === Object.prototype)
   );
 }
+
+export const UNKNOWN_IP = Symbol();
