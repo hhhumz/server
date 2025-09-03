@@ -25,6 +25,7 @@ export default class Server {
    * 
    */
   constructor(options) {
+    options = options ?? {};
     if (options["sslCertPath"] && options["sslKeyPath"]) {
       this.addSslFromFile(options["sslCertPath"], options["sslKeyPath"]);
     }
@@ -236,7 +237,7 @@ function isValidHttpError(object) {
 }
 
 function hasFunction(object, functionName) {
-  return typeof(object[functionName]) === "function";
+  return !!object && typeof(object[functionName]) === "function";
 }
 
 /**

@@ -36,7 +36,7 @@ export class HttpContextEvent extends ServerEvent {
   #context = null;
   /** @type {HttpContext} The context in which this event was fired. */
   get context() {
-    return this.#context;
+    return /**/ this.#context;
   }
 
   /** @param {HttpContext} context The context in which this event was fired. */
@@ -60,8 +60,8 @@ export class RouteMatchedEvent extends HttpContextEvent {
 
   #route = null;
   /** @type {Route} The Route that was matched. */
-  get context() {
-    return this.#context;
+  get route() {
+    return this.#route;
   }
 
   /**
