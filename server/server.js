@@ -41,10 +41,11 @@ export default class Server {
       this.logSuppressable(`Starting server on port ${event.port}\u2026`);
     });
     this.addEventListener("stop", event => {
-      // TODO: total size sent
+      // TODO: total requests sent, track by sender ip also
       this.logSuppressable(`Server stopped.`);
     });
     this.addEventListener("requestReceived", event => {
+      console.log(event.context.request);
       this.logSuppressable(`${event.context.requestPath} (${event.context.requestMethod}) from <ip here>`);
     });
     this.addEventListener("noRoutesMatched", event => {
@@ -53,8 +54,7 @@ export default class Server {
       }
     });
     this.addEventListener("responseSent", event => {
-      // TODO: stringify body. also track size
-      this.logSuppressable(`Response: ${event.context?.response?.status}`);
+      // this.logSuppressable(`Response: ${event.context?.response?.status}`);
     });
   }
 
@@ -151,12 +151,7 @@ export default class Server {
   }
 
   async serve(port) {
-
-    Deno.addSignalListener("SIGINT", () => {
-      console.log();
-      this.log("Stopping server from signal.");
-      Deno.exit(0);
-    });
+    // TODO clean this section up ..
     const s = this;
     const denoConfig = {
       port: port,
@@ -170,6 +165,13 @@ export default class Server {
       denoConfig.key = this.#sslKey;
     }
     let denoServer;
+    Deno.addSignalListener("SIGINT", async () => {
+      console.log();
+      this.log("Stopping server from signal\u2026");
+      this.stop();
+      await denoServer?.finished;
+      Deno.exit(0);
+    });
     try {
       denoServer = Deno.serve(denoConfig, async request => await this.handleRequest(request));
       await denoServer.finished;
@@ -208,8 +210,6 @@ export default class Server {
   }
 
   dispatchEvent(...a) {
-    // TODO: should this be a call to dispatchEvent wrapped in a safe
-    // try/catch block that calls the default error handler?
     this.#eventTarget.dispatchEvent(...a);
   }
 
@@ -225,8 +225,9 @@ export default class Server {
   /**
    * @param {Error} error 
    * @param {HttpContext} context 
+   * @param {boolean} isFromEvent
    */
-  async handleMainLoopError(error, context) {
+  async handleMainLoopError(error, context, isFromEvent) {
     this.logSuppressable("Handling error:", error); // TODO should be configurable
     if (typeof(this.#mainLoopErrorHandler) === "function") {
       await this.#mainLoopErrorHandler(error, context);
