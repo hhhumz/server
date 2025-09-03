@@ -157,7 +157,7 @@ export default class HttpContext {
     otherHeadersPlainObj["X-Content-Type-Options"] = "nosniff";
     let csp = "frame-ancestors 'none'; img-src 'self'; script-src 'self'";
     if (this.#hostname !== "localhost") {
-      csp += "; style-src 'self'; default-src 'self'";
+      // csp += "; style-src 'self'; default-src 'self'";
     }
     otherHeadersPlainObj ["Content-Security-Policy"] = csp;
     return otherHeadersPlainObj;
