@@ -23,6 +23,14 @@ export class ServerListenEvent extends ServerEvent {
 
 }
 
+export class ServerStopEvent extends ServerEvent {
+
+  constructor(...args) {
+    super("stop", ...args);
+  }
+
+}
+
 export class HttpContextEvent extends ServerEvent {
 
   #context = null;
@@ -71,6 +79,15 @@ export class NoRoutesMatchedEvent extends HttpContextEvent {
   /** @param {HttpContext} context The context in which this event was fired. */
   constructor(context, ...args) {
     super("noRoutesMatched", context, ...args);
+  }
+
+}
+
+export class ResponseSentEvent extends HttpContextEvent {
+
+  /** @param {HttpContext} context The context in which this event was fired. */
+  constructor(context, ...args) {
+    super("responseSent", context, ...args);
   }
 
 }

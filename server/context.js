@@ -1,4 +1,7 @@
 import { Validator } from "../core/api.js";
+import { HttpError } from "./server.js";
+
+// TODO maybe implement some sort of request change logging ?
 
 /** The context in which a server processes and responds to an HTTP request. */
 export default class HttpContext {
@@ -42,6 +45,10 @@ export default class HttpContext {
 
   #hasJson = false;
   #json = null;
+  /** @type {?Object} The parsed JSON object from the request's body, if any. */
+  get json() {
+    return this.#json;
+  }
   
   constructor(request) {
     if (!(request instanceof Request)) {
@@ -62,10 +69,7 @@ export default class HttpContext {
     }
   }
 
-  get json() {
-    return this.#json;
-  }
-
+  /** Returns an object that can validate this request's JSON body with chained assertions. */
   validateJson() {
     return new Validator(this.#json);
   }
@@ -117,7 +121,9 @@ export default class HttpContext {
       }
     }
     catch (error) {
-      // Do something...?
+      if (error instanceof Deno.errors.NotFound) {
+        throw new HttpError("Not Found", 404);
+      }
     }
     this.respond(new Response(body, {
       status: 200,

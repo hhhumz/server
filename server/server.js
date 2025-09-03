@@ -16,7 +16,12 @@ export default class Server {
   #eventTarget = new EventTarget();
 
   /**
-   * 
+   * @param {{
+   * sslCertPath: string
+   * sslKeyPath: string
+   * suppressDefaultLogging: boolean
+   * defaultErrorHandler: Function
+   * }} options 
    * 
    */
   constructor(options) {
@@ -34,9 +39,16 @@ export default class Server {
     this.addEventListener("listen", event => {
       this.logSuppressable(`Starting server on port ${event.port}\u2026`);
     });
-
+    this.addEventListener("stop", event => {
+      // TODO: total size sent
+      this.logSuppressable(`Server stopped.`);
+    });
     this.addEventListener("requestReceived", event => {
-      this.logSuppressable(`${event.context.requestPath} (${event.context.requestMethod})`);
+      this.logSuppressable(`${event.context.requestPath} (${event.context.requestMethod}) from <ip here>`);
+    });
+    this.addEventListener("responseSent", event => {
+      // TODO: stringify body. also track size
+      this.logSuppressable(`Response: ${event.context.response.status}`);
     });
   }
 
@@ -77,8 +89,8 @@ export default class Server {
 
   async handleRequest(request) {
     const context = new HttpContext(request);
+    await context.loadJson(); // TODO should probably not do this depending on the body type
     this.dispatchEvent(new Events.RequestReceivedEvent(context));
-    await context.loadJson();
 
     let match = false;
     for (const route of this.#routes) {
@@ -86,8 +98,8 @@ export default class Server {
                         // if preceding ones fail normally needed ? idk
       if (route.matches(context)) {
         match = true;
-        this.dispatchEvent(new Events.RouteMatchedEvent(context, route));
         try {
+          this.dispatchEvent(new Events.RouteMatchedEvent(context, route));
           await route.execute(context);
         }
         catch (error1) {
@@ -97,24 +109,19 @@ export default class Server {
             if (hasFunction(route, "handleError")) {
               await route.handleError(context, error1);
             }
-            // Otherwise, use the default error handler if it exists
-            else if (typeof(this.#defaultErrorHandler) === "function") {
-              await this.#defaultErrorHandler(context, error1);
-            }
             else {
-              this.defaultHandleError(error1, context);
+              await this.defaultHandleError(error1, context);
             }
           }
           catch (error2) {
             context.setError(context.error2);
             this.log("[ERROR] Handling error:", error1);
             this.log("[ERROR] Another error was caught while handling the above error: ", error2);
-            // Use the last resort error handler, which should basically never break.
-            this.defaultHandleError(error2, context);
           }
         }
       }
     }
+
     if (!match) {
       this.dispatchEvent(new Events.NoRoutesMatchedEvent(context));
     }
@@ -128,10 +135,16 @@ export default class Server {
         this.defaultHandleError(new Error("No response was provided. Set one with HttpContext.respond()"), context);
       }
     }
+
+    // TODO: at some point, probably a little bit earlier than here, the
+    // context.response should somehow be made immutable for safety
+    //
+    // The response definitely should not be modifiable at this point
+    this.dispatchEvent(new Events.ResponseSentEvent(context));
     return context.response;
   }
 
-  serve(port) {
+  async serve(port) {
     const denoConfig = {
       port: port,
       signal: this.#abortController.signal,
@@ -143,7 +156,9 @@ export default class Server {
       denoConfig.cert = this.#sslCert;
       denoConfig.key = this.#sslKey;
     }
-    return Deno.serve(denoConfig, async request => await this.handleRequest(request));
+    const denoServer = Deno.serve(denoConfig, async request => await this.handleRequest(request));
+    await denoServer.finished;
+    this.dispatchEvent(new Events.ServerStopEvent());
   }
 
   /** @experimental */
@@ -172,8 +187,8 @@ export default class Server {
   }
 
   get dispatchEvent() {
-    // TODO: should this be a call to dispatchEvent wrapped
-    // in a safe try, catch block that calls the default error handler?
+    // TODO: should this be a call to dispatchEvent wrapped in a safe
+    // try/catch block that calls the default error handler?
     return this.#eventTarget.dispatchEvent;
   }
 
@@ -181,6 +196,7 @@ export default class Server {
     this.#logger.log(...args);
   }
 
+  // TODO: add argument to filter by constructor options (e.g. logResponse, logRequest)
   logSuppressable(...args) {
     if (!this.suppressDefaultLogging) this.log(...args);
   }
@@ -189,13 +205,19 @@ export default class Server {
    * @param {Error} error 
    * @param {HttpContext} context 
    */
-  defaultHandleError(error, context) {
-    if (isValidHttpError(error)) {
-      context.respondJson({message: error.message}, error.statusCode);
+  async defaultHandleError(error, context) {
+    this.logSuppressable("Handling error", error); // TODO should be configurable
+    if (typeof(this.#defaultErrorHandler) === "function") {
+      await this.#defaultErrorHandler(context, error1);
     }
     else {
-      this.logSuppressable(error);
-      context.respondJson({message: "Internal Server Error"}, 500);
+      // Last resort error handler
+      if (isValidHttpError(error)) {
+        context.respondJson({message: error.message}, error.statusCode);
+      }
+      else {
+        context.respondJson({message: "Internal Server Error"}, 500);
+      }
     }
   }
 
