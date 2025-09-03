@@ -57,9 +57,9 @@ export default class HttpContext {
     return this.#json;
   }
 
-  #isLocalhost = false;
-  get isLocalhost() {
-    return this.#isLocalhost;
+  #hostname = null;
+  get hostname() {
+    return this.#hostname;
   }
   
   constructor(request) {
@@ -69,7 +69,7 @@ export default class HttpContext {
     this.#request = request;
     const url = new URL(request.url);
     this.#requestPath = decodeURIComponent(url.pathname);
-    this.#isLocalhost = decodeURIComponent(url.hostname) === "localhost";
+    this.#hostname = decodeURIComponent(url.hostname);
     this.#ip = request?.headers?.get("x-forwarded-for") || request?.conn?.remoteAddr?.hostname || UNKNOWN_IP;
   }
 
@@ -155,10 +155,11 @@ export default class HttpContext {
     otherHeadersPlainObj["Strict-Transport-Security"] = "max-age=2000000; includeSubDomains"; 
     otherHeadersPlainObj["X-Frame-Options"] = "DENY";
     otherHeadersPlainObj["X-Content-Type-Options"] = "nosniff";
-    if (!this.#isLocalhost) {
-      otherHeadersPlainObj["Content-Security-Policy"] =
-      "frame-ancestors 'none'; default-src 'self'; img-src 'self'; script-src 'self'; style-src 'self'";
+    let csp = "frame-ancestors 'none'; img-src 'self'; script-src 'self'";
+    if (this.#hostname !== "localhost") {
+      csp += "; style-src 'self'; default-src 'self'";
     }
+    otherHeadersPlainObj ["Content-Security-Policy"] = csp;
     return otherHeadersPlainObj;
   }
 
