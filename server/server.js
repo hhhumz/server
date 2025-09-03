@@ -1,4 +1,4 @@
-import { DefaultLogger, UNKNOWN_IP } from "./../core/api.js";
+import { DefaultLogger } from "./../core/api.js";
 import HttpContext from "./context.js";
 import { StaticMountRoute, StaticFileRoute } from "./routes.js";
 import * as Events from "./event.js";
@@ -45,9 +45,8 @@ export default class Server {
       this.logSuppressable(`Server stopped.`);
     });
     this.addEventListener("requestReceived", event => {
-      const ip = event.context.ip;
-      const displayIp = ip === UNKNOWN_IP ? "Unknown IP" : ip;
-      this.logSuppressable(`${event.context.requestPath} (${event.context.requestMethod}) from ${displayIp}`);
+      const ip = event.context.ip ?? "Unknown IP";
+      this.logSuppressable(`${event.context.requestPath} (${event.context.requestMethod}) from ${ip}`);
     });
     this.addEventListener("noRoutesMatched", event => {
       if (!(event.context.response instanceof Response)) {
@@ -94,8 +93,8 @@ export default class Server {
     this.#routes.push(routeObject);
   }
 
-  async handleRequest(request) {
-    const context = new HttpContext(request);
+  async handleRequest(request, info) {
+    const context = new HttpContext(request, info);
     await context.loadJson(); // TODO should probably not do this depending on the body type
     this.dispatchEvent(new Events.RequestReceivedEvent(context));
 
@@ -174,7 +173,7 @@ export default class Server {
       Deno.exit(0);
     });
     try {
-      denoServer = Deno.serve(denoConfig, async request => await this.handleRequest(request));
+      denoServer = Deno.serve(denoConfig, async (...a) => await this.handleRequest(...a));
       await denoServer.finished;
       this.dispatchEvent(new Events.ServerStopEvent());
     } 

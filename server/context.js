@@ -1,4 +1,4 @@
-import { Validator, UNKNOWN_IP } from "../core/api.js";
+import { Validator } from "../core/api.js";
 import { HttpError } from "./server.js";
 
 // TODO maybe implement some sort of request change logging ?
@@ -60,15 +60,20 @@ export default class HttpContext {
     return this.#hostname;
   }
   
-  constructor(request) {
+  constructor(request, info) {
     if (!(request instanceof Request)) {
       throw new TypeError("Must provide a Request");
+    }
+    if (info?.remoteAddr?.hostname) {
+      this.#ip = decodeURIComponent(info.remoteAddr.hostname);
+    }
+    else {
+      this.#ip = "Unknown IP";
     }
     this.#request = request;
     const url = new URL(request.url);
     this.#requestPath = decodeURIComponent(url.pathname);
     this.#hostname = decodeURIComponent(url.hostname);
-    this.#ip = request?.headers?.get("x-forwarded-for") || request?.conn?.remoteAddr?.hostname || UNKNOWN_IP;
   }
 
   async loadJson() {
