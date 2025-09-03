@@ -151,6 +151,12 @@ export default class Server {
   }
 
   async serve(port) {
+
+    Deno.addSignalListener("SIGINT", () => {
+      console.log();
+      this.log("Stopping server from signal.");
+      Deno.exit(0);
+    });
     const s = this;
     const denoConfig = {
       port: port,
@@ -163,9 +169,17 @@ export default class Server {
       denoConfig.cert = this.#sslCert;
       denoConfig.key = this.#sslKey;
     }
-    const denoServer = Deno.serve(denoConfig, async request => await this.handleRequest(request));
-    await denoServer.finished;
-    this.dispatchEvent(new Events.ServerStopEvent());
+    let denoServer;
+    try {
+      denoServer = Deno.serve(denoConfig, async request => await this.handleRequest(request));
+      await denoServer.finished;
+      this.dispatchEvent(new Events.ServerStopEvent());
+    } 
+    catch (error) {
+      if (error instanceof Deno.errors.AddrInUse) {
+        this.log("Warning: Server tried to start when already in use!");
+      }
+    }
   }
 
   /** @experimental */
@@ -177,8 +191,8 @@ export default class Server {
       fileWatcher.close();
       this.log("Restarting server due to file changes: " + event.paths.toString());
       this.stop();
+      await denoServer?.finished;
     }
-    await denoServer.finished;
   }
 
   stop() {
@@ -224,11 +238,9 @@ export default class Server {
 
   #lastResortErrorHandler(error, context) {
     if (isValidHttpError(error)) {
-      console.log("Some settings are heppening.(valid http error edition)");
       context.respondJson({message: error.message}, error.statusCode);
     }
     else {
-      console.log("Some settings are heppening.", context, context instanceof HttpContext);
       context.respondJson({message: "Internal Server Error"}, 500);
     }
   }
@@ -244,10 +256,6 @@ function isValidLoggerObject(object) {
 }
 
 function isValidHttpError(object) {
-  console.log("Tracing HTTP ERROR!");
-  console.log(object);
-  console.log(object.message);
-  console.log(object.statusCode);
   return typeof(object["message"]) === "string" && Number.isInteger(object["statusCode"]);
 }
 

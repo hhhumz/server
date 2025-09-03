@@ -1,6 +1,8 @@
 import { Validator } from "../core/api.js";
 import { HttpError } from "./server.js";
 
+const UNKNOWN_IP = Symbol();
+
 // TODO maybe implement some sort of request change logging ?
 
 /** The context in which a server processes and responds to an HTTP request. */
@@ -40,8 +42,13 @@ export default class HttpContext {
     return this.#error;
   }
 
+  #ip;
+  get ip() {
+    return this.#ip === UNKNOWN_IP ? null : this.#ip;
+  }
+
   /** @type {any} Arbitrary data for this context. */
-  data = null;
+  data = {};
 
   #hasJson = false;
   #json = null;
@@ -56,6 +63,7 @@ export default class HttpContext {
     }
     this.#request = request;
     this.#requestPath = decodeURIComponent(new URL(request.url).pathname);
+    this.#ip = request?.headers?.get("x-forwarded-for") || request?.conn?.remoteAddr?.hostname || UNKNOWN_IP;
   }
 
   async loadJson() {
