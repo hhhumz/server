@@ -1,7 +1,11 @@
 {
-  "name": "@hhhumz/server",
+  "name": "@hhhumz/wisp",
   "version": "0.1.0",
+  "author": "hhhumz",
+  "license": "GPL-3.0",
+  "description": "Small and flexible webserver",
   "exports": {
+    "./core": "./core/api.js",
     "./server": "./server/api.js",
     "./jsdb": "./jsdb/api.js"
   },

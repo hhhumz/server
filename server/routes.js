@@ -1,7 +1,27 @@
-import { serveStaticFile } from "./utilities.js";
+import HttpContext from "./context.js";
 
+/** @interface */
+export class Route {
+
+  /** @param {HttpContext} context */
+  matches(context) {
+
+  }
+
+  /** @param {HttpContext} context */
+  execute(context) {}
+
+  /**
+   * @param {HttpContext} context
+   * @param {Error} error
+   */
+  handleError(context, error) {}
+
+}
+
+/** @implements {Route} */
 export class StaticFileRoute {
-  
+
   #routePath;
   #filePath;
 
@@ -10,16 +30,17 @@ export class StaticFileRoute {
     this.#filePath = filePath;
   }
 
-  matches(request) {
-    return request.method === "GET" && request.path === this.#routePath;
+  matches(context) {
+    return context.requestMethod === "GET" && context.requestPath === this.#routePath;
   }
 
-  async execute(request) {
-    return await serveStaticFile(this.#filePath);
+  async execute(context) {
+    return await context.respondStaticFile(Deno.cwd() + this.#filePath);
   }
 
 }
 
+/** @implements {Route} */
 export class StaticMountRoute {
 
   #routePath;
@@ -30,16 +51,16 @@ export class StaticMountRoute {
     this.#mountPoint = mountPoint;
   }
 
-  matches(request) {
-    return request.method === "GET" && request.path.startsWith(this.#routePath);
+  matches(context) {
+    return context.requestMethod === "GET" && context.requestPath.startsWith(this.#routePath);
   }
 
-  async execute(request) {
-    let routedPath = this.#mountPoint + request.path.substring(this.#routePath.length);
+  async execute(context) {
+    let routedPath = this.#mountPoint + context.requestPath.substring(this.#routePath.length);
     if (routedPath.endsWith("/")) {
       routedPath = routedPath.substring(0, routedPath.length - 1);
     }
-    return await serveStaticFile(routedPath);
+    return await context.respondStaticFile(Deno.cwd() + routedPath);
   }
 
 }

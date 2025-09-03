@@ -186,7 +186,7 @@ function strictClone(v) {
   if (v instanceof Array || v instanceof Object) {
     return deepCopyJson(v);
   }
-  throw new JsDbError("Could not clone non-primitive", v);
+  throw new JsDbError(`Could not clone non-primitive ${v}`);
 }
 
 function deepCopyJson(arrayOrObject) {
@@ -204,7 +204,7 @@ function deepCopyJson(arrayOrObject) {
     }
     return val;
   }
-  throw new JsDbError("Could not clone object");
+  throw new JsDbError(`Could not clone non-primitive ${arrayOrObject}`);
 }
 
 // TODO prevent setting of constant fields
