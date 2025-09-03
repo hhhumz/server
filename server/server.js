@@ -47,6 +47,11 @@ export default class Server {
     this.addEventListener("requestReceived", event => {
       this.logSuppressable(`${event.context.requestPath} (${event.context.requestMethod}) from <ip here>`);
     });
+    this.addEventListener("noRoutesMatched", event => {
+      if (!(event.context.response instanceof Response)) {
+        this.#mainLoopErrorHandler(new HttpError("Not Found", 404), event.context);
+      }
+    });
     this.addEventListener("responseSent", event => {
       // TODO: stringify body. also track size
       this.logSuppressable(`Response: ${event.context?.response?.status}`);
