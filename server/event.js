@@ -83,11 +83,89 @@ export class NoRoutesMatchedEvent extends HttpContextEvent {
 
 }
 
-export class ResponseSentEvent extends HttpContextEvent {
+export class BeforeResponseSentEvent extends HttpContextEvent {
 
   /** @param {HttpContext} context The context in which this event was fired. */
   constructor(context, ...args) {
-    super("responseSent", context, ...args);
+    super("beforeResponseSent", context, ...args);
+  }
+
+}
+
+/** EventTarget-like object that allows adding, pausing, and removing recurring events @unstable @experimental */
+export class Timer {
+
+  #a = [];
+
+  addTimer(intervalMs, callback) {
+    const chronlet = this.#getChronletByCallback(callback);
+    if (chronlet === null) {
+      const newbornChronlet = new Chronlet(intervalMs, callback);
+      this.#a.push(newbornChronlet);
+      newbornChronlet.start();
+    }
+    else {
+      chronlet.intervalMs = intervalMs;
+      chronlet.start();
+    }
+  }
+
+  removeTimer(callback) {
+    const chronlet = this.#getChronletByCallback(callback);
+    if (chronlet !== null) {
+      const index = this.#a.indexOf(chronlet);
+      this.#a.splice(index, 1);
+    }
+  }
+
+  pauseTimer(callback) {
+    const chronlet = this.#getChronletByCallback(callback);
+    if (chronlet !== null) {
+      chronlet.stop();
+    }
+  }
+
+  removeAll() {
+    this.#a.forEach(c => c.stop());
+    this.#a = [];
+  }
+
+  pauseAll() {
+    this.#a.forEach(c => c.stop());
+  }
+
+  #getChronletByCallback(callback) {
+    const a = this.#a.filter(c => c.callback === callback);
+    if (a.length < 1) {
+      return null;
+    }
+    else {
+      return a[0];
+    }
+  }
+
+}
+
+class Chronlet {
+
+  intervalMs;
+  callback;
+  id = null;
+  paused = true;
+
+  constructor(intervalMs, callback) {
+    this.intervalMs = intervalMs;
+    this.callback = callback;
+  }
+
+  start() {
+    this.id = setInterval(this.callback, this.intervalMs);
+  }
+
+  stop() {
+    if (this.id !== null) {
+      clearInterval(this.id);
+    }
   }
 
 }

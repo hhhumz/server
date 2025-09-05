@@ -1,5 +1,6 @@
 import { Validator } from "../core/api.js";
 import { HttpError } from "./server.js";
+import { getCookies, setCookie } from "std/http";
 
 // TODO maybe implement some sort of request change logging ?
 
@@ -59,6 +60,8 @@ export default class HttpContext {
   get hostname() {
     return this.#hostname;
   }
+
+  #responseCookies = [];
   
   constructor(request, info) {
     if (!(request instanceof Request)) {
@@ -74,6 +77,26 @@ export default class HttpContext {
     const url = new URL(request.url);
     this.#requestPath = decodeURIComponent(url.pathname);
     this.#hostname = decodeURIComponent(url.hostname);
+  }
+
+  getRequestCookie(key) {
+    const requestCookies = getCookies(this.#request.headers);
+    if (!(key in requestCookies)) {
+      return null;
+    }
+    else {
+      return requestCookies[key];
+    }
+  }
+
+  setResponseCookie(cookie) {
+    this.#responseCookies.push(cookie);
+  }
+
+  applyCookies() {
+    for (const cookie of this.#responseCookies) {
+      setCookie(this.#response.headers, cookie);
+    }
   }
 
   async loadJson() {

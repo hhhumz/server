@@ -35,8 +35,8 @@ export default class SchemaBuilder {
     return this;
   }
 
-  addPrimaryKey(fieldName, typeId) {
-    return this.addField(fieldName, typeId, "cru");
+  addPrimaryKey(fieldName, typeId, flags="") {
+    return this.addField(fieldName, typeId, "cru" + flags);
   }
 
   async exportToFile(filePath) {

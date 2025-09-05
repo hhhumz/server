@@ -10,10 +10,11 @@ export default class Server {
   #sslKey = null;
   suppressDefaultLogging = false;
   #logger = null;
-  #mainLoopErrorHandler = null;
+  mainLoopErrorHandler = null;
 
   #abortController = new AbortController();
   #eventTarget = new EventTarget();
+  #timer = new Events.Timer();
 
   /**
    * @param {{
@@ -33,27 +34,31 @@ export default class Server {
     this.suppressDefaultLogging = !!options["suppressDefaultLogging"];
     this.#logger = isValidLoggerObject(options["logger"]) ? options["logger"] : new DefaultLogger();
 
-    this.#mainLoopErrorHandler = hasFunction(options, "mainLoopErrorHandler")
+    this.mainLoopErrorHandler = hasFunction(options, "mainLoopErrorHandler")
       ? options.mainLoopErrorHandler :
       (error, context) => this.#lastResortErrorHandler(error, context);
 
+    this.addDefaultEventListeners();
+  }
+
+  addDefaultEventListeners() {
     this.addEventListener("listen", event => {
       this.logSuppressable(`Starting server on port ${event.port}\u2026`);
     });
     this.addEventListener("stop", event => {
       // TODO: total requests sent, track by sender ip also
-      this.logSuppressable(`Server stopped.`);
+      this.logSuppressable("Server stopped.");
     });
     this.addEventListener("requestReceived", event => {
-      const ip = event.context.ip ?? "Unknown IP";
+      const ip = event.context.ip ?? "<unknown ip>";
       this.logSuppressable(`${event.context.requestPath} (${event.context.requestMethod}) from ${ip}`);
     });
     this.addEventListener("noRoutesMatched", event => {
       if (!(event.context.response instanceof Response)) {
-        this.#mainLoopErrorHandler(new HttpError("Not Found", 404), event.context);
+        this.mainLoopErrorHandler(new HttpError("Not Found", 404), event.context);
       }
     });
-    this.addEventListener("responseSent", event => {
+    this.addEventListener("beforeResponseSent", event => {
       // this.logSuppressable(`Response: ${event.context?.response?.status}`);
     });
   }
@@ -121,7 +126,7 @@ export default class Server {
           }
           catch (error2) {
             context.setError(context.error2);
-            this.log("[ERROR] Handling error:", error1);
+            this.log(`[ERROR] Handling error for path ${context.requestPath}:`, error1);
             this.log("[ERROR] Another error was caught while handling the above error: ", error2);
           }
         }
@@ -146,7 +151,8 @@ export default class Server {
     // context.response should somehow be made immutable for safety
     //
     // The response definitely should not be modifiable at this point
-    this.dispatchEvent(new Events.ResponseSentEvent(context));
+    this.dispatchEvent(new Events.BeforeResponseSentEvent(context));
+    context.applyCookies();
     return context.response;
   }
 
@@ -165,15 +171,15 @@ export default class Server {
       denoConfig.key = this.#sslKey;
     }
     let denoServer;
-    Deno.addSignalListener("SIGINT", async () => {
-      console.log();
-      this.log("Stopping server from signal\u2026");
-      this.stop();
-      await denoServer?.finished;
-      Deno.exit(0);
-    });
     try {
       denoServer = Deno.serve(denoConfig, async (...a) => await this.handleRequest(...a));
+      Deno.addSignalListener("SIGINT", async () => {
+        console.log();
+        this.log("Stopping server from signal\u2026");
+        this.stop();
+        await denoServer?.finished;
+        Deno.exit(0);
+      });
       await denoServer.finished;
       this.dispatchEvent(new Events.ServerStopEvent());
     } 
@@ -213,6 +219,18 @@ export default class Server {
     this.#eventTarget.dispatchEvent(...a);
   }
 
+  addTimer(...a) {
+    this.#timer.addTimer(...a);
+  }
+
+  removeTimer(...a) {
+    this.#timer.removeTimer(...a);
+  }
+
+  pauseTimer(...a) {
+    this.#timer.pauseTimer(...a);
+  }
+
   log(...args) {
     this.#logger.log(...args);
   }
@@ -228,9 +246,9 @@ export default class Server {
    * @param {boolean} isFromEvent
    */
   async handleMainLoopError(error, context, isFromEvent) {
-    this.logSuppressable("Handling error:", error); // TODO should be configurable
-    if (typeof(this.#mainLoopErrorHandler) === "function") {
-      await this.#mainLoopErrorHandler(error, context);
+    this.logSuppressable(`Handling error for path ${context.requestPath}:`, error); // TODO should be configurable
+    if (typeof(this.mainLoopErrorHandler) === "function") {
+      await this.mainLoopErrorHandler(error, context);
     }
     else {
       this.#lastResortErrorHandler(error, context);

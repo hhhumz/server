@@ -1,6 +1,6 @@
-import { JsDbError, xread, log, xwrite } from "./core.js";
+import { JsDbError, xread, log, xwrite, genfid } from "./core.js";
 import { isPrimaryKey } from "./schema.js";
-import { getTypeDef } from "./types.js";
+import { getTypeDef, stockTypeIds } from "./types.js";
 
 class Transaction {
 
@@ -44,7 +44,37 @@ export class JsDbConnection {
   }
 
   createRow(tableName) {
-    return new Bean(this.#getTable(tableName));
+    const tableDescriptor = this.#getTable(tableName);
+    const bean = new Bean(tableDescriptor);
+    // check for autoincrementing integers
+    for (let i = 0; i < tableDescriptor.fieldNum; i++) {
+      const field = tableDescriptor.getFieldByIndex(i);
+      if (
+        field.flags.indexOf("a") !== -1
+        && field.typeDef.typeId === stockTypeIds.INTEGER
+      ) {
+        const id = this.#autoIncrement(tableName, field.fieldName);
+        bean.set(field.fieldName, id);
+      }
+    }
+    return bean;
+  }
+
+  getItemCount(tableName) {
+    return this.#database.data[tableName].length;
+  }
+
+  #autoIncrement(tableName, fieldName) {
+    const fid = genfid(tableName, fieldName);
+    if (!this.#database.meta.autoincrement) {
+      this.#database.meta.autoincrement = {};
+    }
+    const a = this.#database.meta.autoincrement[fid];
+    if (!a && a !== 0) {
+      this.#database.meta.autoincrement[fid] = 0;
+    }
+    this.#database.meta.autoincrement[fid]++;
+    return this.#database.meta.autoincrement[fid] - 1;
   }
 
   first(tableName, queryCallback) {
@@ -52,12 +82,26 @@ export class JsDbConnection {
       throw new TypeError("Second argument must be a callback taking one Bean argument");
     }
     for (const row of this.#database.data[tableName]) {
-      const bean = new Bean(this.#getTable(tableName), row, true);
+      const bean = Bean.import(this.#getTable(tableName), row);
       if (queryCallback(bean)) {
         return bean;
       }
     }
     return null;
+  }
+
+  all(tableName, queryCallback) {
+    if (!(queryCallback instanceof Function)) {
+      throw new TypeError("Second argument must be a callback taking one Bean argument");
+    }
+    const a = [];
+    for (const row of this.#database.data[tableName]) {
+      const bean = Bean.import(this.#getTable(tableName), row);
+      if (queryCallback(bean)) {
+        a.push(bean);
+      }
+    }
+    return a;
   }
 
   async commit(...beans) {
@@ -77,7 +121,7 @@ export class JsDbConnection {
         const td = this.#getTable(bean.tableName);
         const idFieldIndex = td.getField(td.pkField).index;
         const rowId = exportedBean[idFieldIndex];
-        const rowIndex = -1;
+        let rowIndex = -1;
         for (let i = 0; i < this.#database.data[bean.tableName].length; i++) {
           const r = this.#database.data[bean.tableName][i]
           if (r[idFieldIndex] === rowId) {
@@ -90,12 +134,12 @@ export class JsDbConnection {
         for (let i = 0; i < exportedBean.length; i++) {
           const value = exportedBean[i];
           const fd = td.getFieldByIndex(i);
-          if (fd.pk) {
+          if (fd.pk && rowIndex === -1) {
             if (valueExistsInColumn(this.#database.data, fd, value)) {
               throw new JsDbError(`Primary key Constraint error: value (${value}) already exists in (${fd.tableName},${fd.fieldName})`);
             }
           }
-          if (fd.fkTable) {
+          if (fd.fkTable && rowIndex === -1) {
             const foreignFd = this.#getTable(fd.fkTable).getField(fd.fkField);
             if (!valueExistsInColumn(this.#database.data, foreignFd, value)) {
               throw new JsDbError(`Foreign key Constraint error: value (${value}) does not exist in (${foreignFd.tableName},${foreignFd.fieldName})`);
@@ -213,7 +257,6 @@ class Bean {
 
   #localData;
   #tableDescriptor;
-  #readOnly;
   #isDeleted = false;
   get isDeleted() {
     return true;
@@ -223,9 +266,8 @@ class Bean {
     return this.#tableDescriptor.tableName;
   }
 
-  constructor(tableDescriptor, initialData, readOnly) {
+  constructor(tableDescriptor, initialData) {
     this.#tableDescriptor = tableDescriptor;
-    this.#readOnly = readOnly ?? false;
     if (initialData instanceof Array && initialData.length === tableDescriptor.fieldNum) {
       this.#localData = initialData;
     }
@@ -237,6 +279,14 @@ class Bean {
     }
   }
 
+  static import(tableDescriptor, initialData) {
+    const a = [];
+    for (let i = 0; i < tableDescriptor.fieldNum; i++) {
+      a.push(tableDescriptor.getFieldByIndex(i).typeDef.deserialize(initialData[i]));
+    }
+    return new this(tableDescriptor, a);
+  }
+
   setMultiple(jsonObject) {
     for (const f in jsonObject) {
       this.set(f, jsonObject[f]);
@@ -245,9 +295,6 @@ class Bean {
   }
 
   set(fieldName, value) {
-    if (this.#readOnly) {
-      throw new JsDbError("This bean is read-only");
-    }
     this.#localData[this.#tableDescriptor.getField(fieldName).index] = value;
     return this;
   }

@@ -1,16 +1,16 @@
 /** Validates objects such as JSON input using chained assertions. */
 export default class Validator {
 
-  /** @returns {Object} The Object to be validated */
+  /** @readonly @returns {Object} The Object to be validated */
   get object() { return this.#object; }
   #object = {};
 
-  /** @returns {Boolean} Whether any assertion has failed. */
+  /** @readonly @returns {Boolean} Whether any assertion has failed. */
   get anyFailed() { return this.#anyFailed; }
   #anyFailed = false;
 
   
-  /** @returns {Boolean} Whether the last assertion failed. */
+  /** @readonly @returns {Boolean} Whether the last assertion failed. */
   get lastFailed() { return this.#lastFailed; }
   #lastFailed = false;
 
@@ -42,8 +42,18 @@ export default class Validator {
    * @param {String} type The type to check, according to the typeof keywword.
    */
   isOfType(key, typeStr) {
-    this.hasNotNull(key).assert(() => typeof(this.#object[key]) === typeStr);
+    return this.hasNotNull(key).assert(() => typeof(this.#object[key]) === typeStr);
   }
+
+  /**
+   * Asserts that the key exists, is not null nor undefined, and
+   * is not an empty string.
+   * @param {String} key
+   */
+  isNotEmpty(key) {
+    return this.hasNotNull(key).assert(() => this.#object[key] !== "");
+  }
+
 
   /**
    * Asserts that some condition or callback resolves to true.

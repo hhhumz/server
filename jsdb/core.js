@@ -25,3 +25,6 @@ export async function xwrite(path, object) {
 }
 
 export const __SEP = "§";
+export function genfid(tableName, fieldName) {
+  return tableName + __SEP + fieldName;
+}
