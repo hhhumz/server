@@ -15,9 +15,8 @@ class Transaction {
   }
 
   abort(databaseToRestore, error) {
-    log("Aborting transaction due to error.");
     databaseToRestore.data = this.#backupData;
-    log("Restored old state.");
+    log("Aborted transaction due to error; restored old state");
     throw error;
   }
 
@@ -174,9 +173,9 @@ export class JsDbConnection {
     catch (error) {
       trans.abort(this.#database, error);
     }
-    log(`Successfully wrote ${beans.length} updated records to runtime memory`);
+    // log(`Successfully wrote ${beans.length} updated records to runtime memory`);
     await xwrite(this.#filePath, this.#database);
-    log("Successfully saved data to disk");
+    // log("Successfully saved data to disk");
   }
 
   #getTable(tableName) {

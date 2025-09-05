@@ -42,7 +42,7 @@ export default class SchemaBuilder {
   async exportToFile(filePath) {
     validateSchema(this.#schemaJson);
     const data = buildDatabase(this.#schemaJson);
-    log(data);
+    // log(data);
     await xwrite(filePath, data);
   }
 

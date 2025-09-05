@@ -29,15 +29,3 @@ export class Args {
   }
 
 }
-
-export class DefaultLogger {
-
-  log(...args) {
-    console.log("[wisp] " + getPaddedDate(), ...args);
-  }
-
-}
-
-function getPaddedDate() {
-  return new Date().toLocaleTimeString().padEnd(12);
-}

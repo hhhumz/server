@@ -151,7 +151,6 @@ class Chronlet {
   intervalMs;
   callback;
   id = null;
-  paused = true;
 
   constructor(intervalMs, callback) {
     this.intervalMs = intervalMs;
@@ -165,6 +164,7 @@ class Chronlet {
   stop() {
     if (this.id !== null) {
       clearInterval(this.id);
+      this.id = null;
     }
   }
 

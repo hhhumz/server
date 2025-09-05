@@ -1,20 +1,22 @@
+import { hasFunction } from "../core/api.js";
 import HttpContext from "./context.js";
 
-/** @interface */
+/**
+ * @interface Route
+ */
 export class Route {
 
-  /** @param {HttpContext} context */
-  matches(context) {
-
+  static [Symbol.hasInstance](instance) {
+    return hasFunction(instance, "execute") && hasFunction(instance, "matches");
   }
+
+  /** @param {HttpContext} context */
+  matches(context) {}
 
   /** @param {HttpContext} context */
   execute(context) {}
 
-  /**
-   * @param {HttpContext} context
-   * @param {Error} error
-   */
+  /** @optional @param {HttpContext} context @param {Error} error */
   handleError(context, error) {}
 
 }

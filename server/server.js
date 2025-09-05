@@ -1,29 +1,31 @@
-import { DefaultLogger } from "./../core/api.js";
+import { Logger, DefaultLogger } from "./../core/api.js";
 import HttpContext from "./context.js";
-import { StaticMountRoute, StaticFileRoute } from "./routes.js";
+import { Route, StaticMountRoute, StaticFileRoute } from "./routes.js";
 import * as Events from "./event.js";
 
 export default class Server {
 
+  mainLoopErrorHandler = null;
+
   #routes = [];
   #sslCert = null;
   #sslKey = null;
-  suppressDefaultLogging = false;
   #logger = null;
-  mainLoopErrorHandler = null;
+  suppressDefaultLogging = false;
 
+  #denoServer = null;
   #abortController = new AbortController();
   #eventTarget = new EventTarget();
   #timer = new Events.Timer();
 
   /**
    * @param {{
-   * sslCertPath: string
-   * sslKeyPath: string
-   * suppressDefaultLogging: boolean
-   * mainLoopErrorHandler: Function
+   *   sslCertPath: string
+   *   sslKeyPath: string
+   *   logger: Logger
+   *   suppressDefaultLogging: boolean
+   *   mainLoopErrorHandler: Function
    * }} options 
-   * 
    */
   constructor(options) {
     options = options ?? {};
@@ -32,13 +34,21 @@ export default class Server {
     }
 
     this.suppressDefaultLogging = !!options["suppressDefaultLogging"];
-    this.#logger = isValidLoggerObject(options["logger"]) ? options["logger"] : new DefaultLogger();
+    this.#logger = (options["logger"] instanceof Logger) ? options["logger"] : new DefaultLogger();
 
     this.mainLoopErrorHandler = hasFunction(options, "mainLoopErrorHandler")
       ? options.mainLoopErrorHandler :
       (error, context) => this.#lastResortErrorHandler(error, context);
 
     this.addDefaultEventListeners();
+    const signalListener = async () => {
+      console.log();
+      this.log("Stopping server from signal\u2026");
+      await this.stop();
+      Deno.exit(0);
+    }
+    Deno.addSignalListener("SIGINT", signalListener);
+    Deno.addSignalListener("SIGTERM", signalListener);
   }
 
   addDefaultEventListeners() {
@@ -46,7 +56,6 @@ export default class Server {
       this.logSuppressable(`Starting server on port ${event.port}\u2026`);
     });
     this.addEventListener("stop", event => {
-      // TODO: total requests sent, track by sender ip also
       this.logSuppressable("Server stopped.");
     });
     this.addEventListener("requestReceived", event => {
@@ -92,8 +101,8 @@ export default class Server {
   }
 
   addRoute(routeObject) {
-    if (!isValidRouteObject(routeObject)) {
-      throw new TypeError("Must provide a valid Route object");
+    if (!(routeObject instanceof Route)) {
+      throw new TypeError("Must provide a valid Route object that implements .matches(HttpContext) and .execute(contHttpContextext)");
     }
     this.#routes.push(routeObject);
   }
@@ -158,53 +167,49 @@ export default class Server {
 
   async serve(port) {
     // TODO clean this section up ..
-    const s = this;
-    const denoConfig = {
-      port: port,
-      signal: this.#abortController.signal,
-      onListen() {
-        s.dispatchEvent(new Events.ServerListenEvent(port));
-      }
-    };
+    const denoRequestHandler = async (...a) => await this.handleRequest(...a);
+    const onListen = () => this.dispatchEvent(new Events.ServerListenEvent(port));
+    const signal = this.#abortController.signal;
+    const denoConfig = { port, onListen, signal };
     if (this.#sslCert !== null && this.#sslKey !== null) {
       denoConfig.cert = this.#sslCert;
       denoConfig.key = this.#sslKey;
     }
-    let denoServer;
     try {
-      denoServer = Deno.serve(denoConfig, async (...a) => await this.handleRequest(...a));
-      Deno.addSignalListener("SIGINT", async () => {
-        console.log();
-        this.log("Stopping server from signal\u2026");
-        this.stop();
-        await denoServer?.finished;
-        Deno.exit(0);
-      });
-      await denoServer.finished;
+      this.#denoServer = Deno.serve(denoConfig, denoRequestHandler);
+      await this.#denoServer.finished;
       this.dispatchEvent(new Events.ServerStopEvent());
     } 
     catch (error) {
       if (error instanceof Deno.errors.AddrInUse) {
         this.log("Warning: Server tried to start when already in use!");
       }
+      else {
+        throw error;
+      }
     }
   }
 
   /** @experimental */
   async serveAndWatch(port, watchDirs) {
-    const denoServer = this.serve(port);
+    this.serve(port);
     this.log("Watching paths: " + watchDirs.toString());
     const fileWatcher = Deno.watchFs(watchDirs ?? "./");
     for await (const event of fileWatcher) {
       fileWatcher.close();
-      this.log("Restarting server due to file changes: " + event.paths.toString());
-      this.stop();
-      await denoServer?.finished;
+      this.log("Restarting due to file changes: " + event.paths.toString());
+      await this.stop();
     }
   }
 
-  stop() {
-    this.#abortController.abort();
+  async stop() {
+    if (!this.#denoServer) {
+        this.log("Warning: Non-existent server tried to start.");
+    }
+    else {
+      await this.#denoServer.shutdown();
+      await this.#denoServer.finished;
+    }
   }
 
   addEventListener(...a) {
@@ -235,9 +240,10 @@ export default class Server {
     this.#logger.log(...args);
   }
 
-  // TODO: add argument to filter by constructor options (e.g. logResponse, logRequest)
   logSuppressable(...args) {
-    if (!this.suppressDefaultLogging) this.log(...args);
+    if (!this.suppressDefaultLogging) {
+      this.log(...args);
+    }
   }
 
   /**
@@ -246,7 +252,7 @@ export default class Server {
    * @param {boolean} isFromEvent
    */
   async handleMainLoopError(error, context, isFromEvent) {
-    this.logSuppressable(`Handling error for path ${context.requestPath}:`, error); // TODO should be configurable
+    this.logSuppressable(`Handling error for path ${context.requestPath}:`, error);
     if (typeof(this.mainLoopErrorHandler) === "function") {
       await this.mainLoopErrorHandler(error, context);
     }
@@ -256,7 +262,7 @@ export default class Server {
   }
 
   #lastResortErrorHandler(error, context) {
-    if (isValidHttpError(error)) {
+    if (error instanceof HttpError) {
       context.respondJson({message: error.message}, error.statusCode);
     }
     else {
@@ -264,18 +270,6 @@ export default class Server {
     }
   }
 
-}
-
-function isValidRouteObject(object) {
-  return hasFunction(object, "execute") && hasFunction(object, "matches");
-}
-
-function isValidLoggerObject(object) {
-  return hasFunction(object, "log");
-}
-
-function isValidHttpError(object) {
-  return typeof(object["message"]) === "string" && Number.isInteger(object["statusCode"]);
 }
 
 function hasFunction(object, functionName) {
@@ -288,6 +282,10 @@ function hasFunction(object, functionName) {
  * @interface
  */
 export class HttpError extends Error {
+
+  static [Symbol.hasInstance](instance) {
+    return typeof(instance["message"]) === "string" && Number.isInteger(instance["statusCode"]);
+  }
 
   #statusCode;
   /** @type {number} An integer between 100-599, i.e. a valid HTTP response status code. */
