@@ -177,16 +177,17 @@ export default class HttpContext {
   }
 
   getHeaders(otherHeadersPlainObj) {
-    otherHeadersPlainObj["Referrer-Policy"] = "same-origin";
-    otherHeadersPlainObj["Strict-Transport-Security"] = "max-age=2000000; includeSubDomains"; 
-    otherHeadersPlainObj["X-Frame-Options"] = "DENY";
-    otherHeadersPlainObj["X-Content-Type-Options"] = "nosniff";
+    const h = otherHeadersPlainObj ?? {};
+    h["Referrer-Policy"] = "same-origin";
+    h["Strict-Transport-Security"] = "max-age=2000000; includeSubDomains"; 
+    h["X-Frame-Options"] = "DENY";
+    h["X-Content-Type-Options"] = "nosniff";
     let csp = "frame-ancestors 'none'; img-src 'self'; script-src 'self'";
     if (this.#hostname !== "localhost") {
       // csp += "; style-src 'self'; default-src 'self'";
     }
-    otherHeadersPlainObj ["Content-Security-Policy"] = csp;
-    return otherHeadersPlainObj;
+    h ["Content-Security-Policy"] = csp;
+    return h;
   }
 
 }

@@ -1,6 +1,44 @@
 import { Route } from "./routes.js"; 
 import HttpContext from "./context.js";
 
+/** Implementation of EventTarget that can await for all event listeners before dispatchEvent() returns  */
+export class ServerEventTarget {
+
+  #map = new Map();
+
+  #lazyGetEventArray(eventName) {
+    if (!this.#map.get(eventName)) {
+      this.#map.set(eventName, []);
+    }
+    return this.#map.get(eventName);
+  }
+
+  addEventListener(eventName, callback) {
+    const a = this.#lazyGetEventArray(eventName);
+    if (a.indexOf(callback) === -1) {
+      a.push(callback);
+    }
+  }
+
+  removeEventListener(eventName, callback) {
+    const a = this.#lazyGetEventArray(eventName);
+    const index = a.indexOf(callback);
+    if (index !== -1) {
+      a.splice(index, 1);
+    }
+  }
+
+  async dispatchEvent(event) {
+    if (!(event instanceof Event)) {
+      throw new TypeError(`Failed to dispatch ${event}`);
+    }
+    for (const callback of this.#lazyGetEventArray(event.type)) {
+      await callback(event);
+    }
+  }
+
+}
+
 export class ServerEvent extends Event {
 
   constructor(...args) {
@@ -23,11 +61,6 @@ export class ServerListenEvent extends ServerEvent {
 
 }
 
-/**
- * @deprecated until i figure out how to wait for all dispatched events to
- * complete before the program exits - for now set Server.cleanupHandler,
- * which is guaranteed to run to completion
- */
 export class ServerStopEvent extends ServerEvent {
 
   constructor(...args) {

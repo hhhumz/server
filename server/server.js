@@ -5,10 +5,8 @@ import * as Events from "./event.js";
 
 export default class Server {
 
-  /** @type {Function} */
+  /** @type {Function<Error,HttpContext>} */
   mainLoopErrorHandler = null;
-  /** @type {Function} */
-  cleanupHandler = null;
 
   #routes = [];
   #sslCert = null;
@@ -18,7 +16,7 @@ export default class Server {
 
   #denoServer = null;
   #abortController = new AbortController();
-  #eventTarget = new EventTarget();
+  #eventTarget = new Events.ServerEventTarget();
   #timer = new Events.Timer();
 
   /**
@@ -62,16 +60,16 @@ export default class Server {
       this.logSuppressable("Server stopped.");
     });
     this.addEventListener("requestReceived", event => {
-      const ip = event.context.ip ?? "<unknown ip>";
-      this.logSuppressable(`${event.context.requestPath} (${event.context.requestMethod}) from ${ip}`);
+      //
     });
     this.addEventListener("noRoutesMatched", event => {
       if (!(event.context.response instanceof Response)) {
-        this.mainLoopErrorHandler(new HttpError("Not Found", 404), event.context);
+        //this.mainLoopErrorHandler(new HttpError("Not Found", 404), event.context);
       }
     });
     this.addEventListener("beforeResponseSent", event => {
-      // this.logSuppressable(`Response: ${event.context?.response?.status}`);
+      const ip = event.context.ip ?? "<unknown ip>";
+      this.logSuppressable(`${event.context.requestPath} (${event.context.requestMethod}|${event.context?.response?.status}) from ${ip}`);
     });
   }
 
@@ -113,7 +111,7 @@ export default class Server {
   async handleRequest(request, info) {
     const context = new HttpContext(request, info);
     await context.loadJson(); // TODO should probably not do this depending on the body type
-    this.dispatchEvent(new Events.RequestReceivedEvent(context));
+    await this.dispatchEvent(new Events.RequestReceivedEvent(context));
 
     let match = false;
     for (const route of this.#routes) {
@@ -122,7 +120,7 @@ export default class Server {
       if (route.matches(context)) {
         match = true;
         try {
-          this.dispatchEvent(new Events.RouteMatchedEvent(context, route));
+          await this.dispatchEvent(new Events.RouteMatchedEvent(context, route));
           await route.execute(context);
         }
         catch (error1) {
@@ -146,16 +144,16 @@ export default class Server {
     }
 
     if (!match) {
-      this.dispatchEvent(new Events.NoRoutesMatchedEvent(context));
+      await this.dispatchEvent(new Events.NoRoutesMatchedEvent(context));
     }
 
     // Verify a response has been provided.
     if (!(context.response instanceof Response)) {
       if (context.error) {
-        this.handleMainLoopError(context.error, context);
+        await this.handleMainLoopError(context.error, context);
       }
       else {
-        this.handleMainLoopError(new Error("No response was provided. Set one with HttpContext.respond()"), context);
+        await this.handleMainLoopError(new Error("No response was provided. Set one with HttpContext.respond()"), context);
       }
     }
 
@@ -163,7 +161,7 @@ export default class Server {
     // context.response should somehow be made immutable for safety
     //
     // The response definitely should not be modifiable at this point
-    this.dispatchEvent(new Events.BeforeResponseSentEvent(context));
+    await this.dispatchEvent(new Events.BeforeResponseSentEvent(context));
     context.applyCookies();
     return context.response;
   }
@@ -171,7 +169,7 @@ export default class Server {
   async serve(port) {
     // TODO clean this section up ..
     const denoRequestHandler = async (...a) => await this.handleRequest(...a);
-    const onListen = () => this.dispatchEvent(new Events.ServerListenEvent(port));
+    const onListen = async () => await this.dispatchEvent(new Events.ServerListenEvent(port));
     const signal = this.#abortController.signal;
     const denoConfig = { port, onListen, signal };
     if (this.#sslCert !== null && this.#sslKey !== null) {
@@ -181,7 +179,6 @@ export default class Server {
     try {
       this.#denoServer = Deno.serve(denoConfig, denoRequestHandler);
       await this.#denoServer.finished;
-      this.dispatchEvent(new Events.ServerStopEvent());
     } 
     catch (error) {
       if (error instanceof Deno.errors.AddrInUse) {
@@ -207,15 +204,13 @@ export default class Server {
 
   async stop() {
     if (!this.#denoServer) {
-        this.log("Warning: Non-existent server tried to start.");
+        this.log("Warning: Non-existent server tried to stop.");
     }
     else {
       this.#timer.removeAll();
       await this.#denoServer.shutdown();
       await this.#denoServer.finished;
-      if (hasFunction(this, "cleanupHandler")) {
-        await this.cleanupHandler();
-      }
+      await this.dispatchEvent(new Events.ServerStopEvent());
     }
   }
 
@@ -227,8 +222,8 @@ export default class Server {
     this.#eventTarget.removeEventListener(...a);
   }
 
-  dispatchEvent(...a) {
-    this.#eventTarget.dispatchEvent(...a);
+  async dispatchEvent(...a) {
+    await this.#eventTarget.dispatchEvent(...a);
   }
 
   addTimer(...a) {
