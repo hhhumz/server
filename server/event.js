@@ -23,6 +23,11 @@ export class ServerListenEvent extends ServerEvent {
 
 }
 
+/**
+ * @deprecated until i figure out how to wait for all dispatched events to
+ * complete before the program exits - for now set Server.cleanupHandler,
+ * which is guaranteed to run to completion
+ */
 export class ServerStopEvent extends ServerEvent {
 
   constructor(...args) {

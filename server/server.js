@@ -5,7 +5,10 @@ import * as Events from "./event.js";
 
 export default class Server {
 
+  /** @type {Function} */
   mainLoopErrorHandler = null;
+  /** @type {Function} */
+  cleanupHandler = null;
 
   #routes = [];
   #sslCert = null;
@@ -207,8 +210,12 @@ export default class Server {
         this.log("Warning: Non-existent server tried to start.");
     }
     else {
+      this.#timer.removeAll();
       await this.#denoServer.shutdown();
       await this.#denoServer.finished;
+      if (hasFunction(this, "cleanupHandler")) {
+        await this.cleanupHandler();
+      }
     }
   }
 
