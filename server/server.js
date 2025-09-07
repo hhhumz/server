@@ -44,7 +44,7 @@ export default class Server {
     this.addDefaultEventListeners();
     const signalListener = async () => {
       console.log();
-      this.log("Stopping server from signal\u2026");
+      this.logSuppressable("Stopping server from signal\u2026");
       await this.stop();
       Deno.exit(0);
     }
@@ -111,49 +111,45 @@ export default class Server {
   async handleRequest(request, info) {
     const context = new HttpContext(request, info);
     await context.loadJson(); // TODO should probably not do this depending on the body type
-    await this.dispatchEvent(new Events.RequestReceivedEvent(context));
+    await this.#safeDispatchEvent(context, new Events.RequestReceivedEvent(context));
 
-    let match = false;
-    for (const route of this.#routes) {
-      if (match) break; // TODO: is the option to have "fall-through" routes
-                        // if preceding ones fail normally needed ? idk
-      if (route.matches(context)) {
-        match = true;
-        try {
-          await this.dispatchEvent(new Events.RouteMatchedEvent(context, route));
-          await route.execute(context);
-        }
-        catch (error1) {
-          context.setError(error1);
+    // Only check routes if the last event didn't already put some response or error.
+    if (!context.response && !context.error) {
+      let match = false;
+      for (const route of this.#routes) {
+        if (match) break; // TODO: is the option to have "fall-through" routes
+                          // if preceding ones fail normally needed ? idk
+        if (route.matches(context)) {
+          match = true;
+          await this.#safeDispatchEvent(context, new Events.RouteMatchedEvent(context, route));
           try {
+            await route.execute(context);
+          }
+          catch (error) {
+            context.setError(error);
             // If the route has defined an error handler, call it
             if (hasFunction(route, "handleError")) {
-              await route.handleError(context, error1);
+              await route.handleError(context, error);
             }
             else {
-              await this.handleMainLoopError(error1, context);
+              await this.#handleMainLoopError(error, context);
             }
-          }
-          catch (error2) {
-            context.setError(context.error2);
-            this.log(`[ERROR] Handling error for path ${context.requestPath}:`, error1);
-            this.log("[ERROR] Another error was caught while handling the above error: ", error2);
           }
         }
       }
+      if (!match) {
+        await this.#safeDispatchEvent(context, new Events.NoRoutesMatchedEvent(context));
+      }
     }
 
-    if (!match) {
-      await this.dispatchEvent(new Events.NoRoutesMatchedEvent(context));
-    }
 
     // Verify a response has been provided.
     if (!(context.response instanceof Response)) {
       if (context.error) {
-        await this.handleMainLoopError(context.error, context);
+        await this.#handleMainLoopError(context.error, context);
       }
       else {
-        await this.handleMainLoopError(new Error("No response was provided. Set one with HttpContext.respond()"), context);
+        await this.#handleMainLoopError(new Error("No response was provided. Set one with HttpContext.respond()"), context);
       }
     }
 
@@ -161,7 +157,7 @@ export default class Server {
     // context.response should somehow be made immutable for safety
     //
     // The response definitely should not be modifiable at this point
-    await this.dispatchEvent(new Events.BeforeResponseSentEvent(context));
+    await this.#safeDispatchEvent(context, new Events.BeforeResponseSentEvent(context));
     context.applyCookies();
     return context.response;
   }
@@ -251,15 +247,25 @@ export default class Server {
   /**
    * @param {Error} error 
    * @param {HttpContext} context 
-   * @param {boolean} isFromEvent
+   * @param {Event} event
    */
-  async handleMainLoopError(error, context, isFromEvent) {
-    this.logSuppressable(`Handling error for path ${context.requestPath}:`, error);
+  async #handleMainLoopError(error, context, event=null) {
+    const inEvent = event instanceof Event ? " in " + event.constructor.name : "";
+    this.logSuppressable(`Handling error for path ${context.requestPath}${inEvent}:`, error);
     if (typeof(this.mainLoopErrorHandler) === "function") {
       await this.mainLoopErrorHandler(error, context);
     }
     else {
       this.#lastResortErrorHandler(error, context);
+    }
+  }
+
+  async #safeDispatchEvent(context, event) {
+    try {
+      await this.dispatchEvent(event);
+    }
+    catch (error) {
+      await this.#handleMainLoopError(error, context, event);
     }
   }
 

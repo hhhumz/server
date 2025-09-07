@@ -186,6 +186,15 @@ export class JsDbConnection {
     return td;
   }
 
+  getTableFieldNames(tableName) {
+    const a = [];
+    const td = this.#getTable(tableName);
+    for (let i = 0; i < td.fieldNum; i++) {
+      a.push(td.getFieldByIndex(i).fieldName);
+    }
+    return a;
+  }
+
 }
 
 function _stringify(v) {
@@ -251,7 +260,6 @@ function deepCopyJson(arrayOrObject) {
 }
 
 // TODO prevent setting of constant fields
-// TODO implement deletion
 class Bean {
 
   #localData;
@@ -306,14 +314,19 @@ class Bean {
     this.#isDeleted = true;
   }
 
-  export() {
+  export(asDict=false) {
     // Serialize each item in the array
-    const a = [];
+    const a = asDict ? {} : [];
     for (let i = 0; i < this.#tableDescriptor.fieldNum; i++) {
       const fd = this.#tableDescriptor.getFieldByIndex(i);
       const val = this.#localData[i];
       if (fd.typeDef.canSerialize(val)) {
-        a[i] = fd.typeDef.serialize(val);
+        if (asDict) {
+          a[this.#tableDescriptor.getFieldByIndex(i).fieldName] = fd.typeDef.serialize(val);
+        }
+        else {
+          a[i] = fd.typeDef.serialize(val);
+        }
       }
       else {
         throw new JsDbError(`Cannot serialize value ${val} as type ${fd.typeDef.typeId} for field ${fd.fieldName}`);
